@@ -1,0 +1,86 @@
+name: Backport Release to Develop
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+      - master
+
+jobs:
+  backport:
+    name: Backport to develop
+    # Only run if the PR was merged (not just closed) and the head branch was a release branch
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # We need the full history for merging
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+      
+      - name: Extract release branch name
+        id: extract-branch
+        run: |
+          RELEASE_BRANCH="${{ github.event.pull_request.head.ref }}"
+          echo "release_branch=${RELEASE_BRANCH}" >> $GITHUB_OUTPUT
+          echo "Release branch is ${RELEASE_BRANCH}"
+
+      - name: Create backport branch
+        run: |
+          git checkout develop
+          git pull origin develop
+          BACKPORT_BRANCH="backport/${RELEASE_BRANCH_NAME}"
+          git checkout -b ${BACKPORT_BRANCH}
+          echo "Created backport branch: ${BACKPORT_BRANCH}"
+        env:
+          RELEASE_BRANCH_NAME: ${{ steps.extract-branch.outputs.release_branch }}
+
+      - name: Merge release changes
+        id: merge
+        run: |
+          # Get the merge commit SHA from the closed PR
+          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+          
+          # Attempt the merge
+          if git merge ${MERGE_COMMIT_SHA}; then
+            echo "merge_status=success" >> $GITHUB_OUTPUT
+            echo "Successfully merged release changes"
+          else
+            echo "merge_status=conflict" >> $GITHUB_OUTPUT
+            echo "Merge conflict occurred"
+            git merge --abort
+          fi
+      
+      - name: Handle successful merge
+        if: steps.merge.outputs.merge_status == 'success'
+        run: |
+          BACKPORT_BRANCH="backport/${RELEASE_BRANCH_NAME}"
+          git push origin ${BACKPORT_BRANCH}
+          
+          # Create PR using GitHub CLI
+          gh pr create \
+            --base develop \
+            --head ${BACKPORT_BRANCH} \
+            --title "Backport: ${{ github.event.pull_request.title }}" \
+            --body "This PR backports changes from ${{ steps.extract-branch.outputs.release_branch }} that were merged into main via #${{ github.event.pull_request.number }}."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BRANCH_NAME: ${{ steps.extract-branch.outputs.release_branch }}
+      
+      - name: Handle merge conflict
+        if: steps.merge.outputs.merge_status == 'conflict'
+        run: |
+          # Create issue about the conflict
+          gh issue create \
+            --title "Merge conflict: Backporting ${{ steps.extract-branch.outputs.release_branch }} to develop" \
+            --body "There was a merge conflict when trying to backport changes from ${{ steps.extract-branch.outputs.release_branch }} to develop. Manual intervention is required."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
