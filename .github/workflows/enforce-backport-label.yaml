@@ -1,0 +1,24 @@
+name: Enforce Backport Label
+
+on:
+  pull_request:
+    types: [opened, edited, labeled, unlabeled]
+    branches:
+        - main
+        - master
+
+jobs:
+  check-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for Backport Label
+        uses: actions/github-script@v6
+        with:
+          script: |
+                const hasBackportLabel = context.payload.pull_request.labels.some(label => {
+                  const name = label.name.toLowerCase();
+                  return name.startsWith('backport develop') || name.startsWith('not backport');
+                });
+                if (!hasBackportLabel) {
+                    throw new Error('Pull request must have a label that starts with "backport develop" or "not backport".');
+                }
