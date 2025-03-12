@@ -81,14 +81,15 @@ jobs:
 
       - name: Backport commits to develop
         run: |
+          COMMITS_TO_BACKPORT="${{ steps.identify-commits.outputs.commits_to_backport }}"
           # If no commits to backport, exit gracefully
-          if [[ -z "${{ env.COMMITS_TO_BACKPORT }}" ]]; then
+          if [[ -z "$COMMITS_TO_BACKPORT" ]]; then
             echo "No non-merge commits to backport. Exiting."
             exit 0
           fi
           
           # Cherry-pick each commit
-          for COMMIT in ${{ env.COMMITS_TO_BACKPORT }}; do
+          for COMMIT in $COMMITS_TO_BACKPORT; do
             echo "Cherry-picking commit: $COMMIT"
             if ! git cherry-pick -x "$COMMIT"; then
               echo "Cherry-pick failed for commit $COMMIT. Resolving conflicts is required."
@@ -103,11 +104,11 @@ jobs:
           done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMITS_TO_BACKPORT: ${{ steps.identify-commits.outputs.commits_to_backport }}
       
       - name: Handle successful cherry-pick
         run: |
-          BACKPORT_BRANCH="backport/${RELEASE_BRANCH_NAME}"
+          RELEASE_BRANCH_NAME="${{ steps.extract-branch.outputs.release_branch }}"
+          BACKPORT_BRANCH="backport/$RELEASE_BRANCH_NAME"
           git push origin ${BACKPORT_BRANCH}
           
           # Create PR using GitHub CLI
@@ -118,4 +119,3 @@ jobs:
             --body "This PR backports changes from ${{ steps.extract-branch.outputs.release_branch }} that were merged into main via #${{ github.event.pull_request.number }}."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_BRANCH_NAME: ${{ steps.extract-branch.outputs.release_branch }}
