@@ -1,4 +1,4 @@
-name: Backport Release/Hotfix to Develop
+name: Backport to Develop
 
 on:
   pull_request:
@@ -11,8 +11,8 @@ on:
 jobs:
   backport:
     name: Backport to develop
-    # Only run if the PR was merged (not just closed) and the head branch was a release branch
-    if: github.event.pull_request.merged == true && (startsWith(github.event.pull_request.head.ref, 'release/') || startsWith(github.event.pull_request.head.ref, 'hotfix/'))
+    # Only run if the PR was merged (not just closed) and with backport label
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.labels.*.name, 'backport ')
     runs-on: ubuntu-latest
     
     steps:
