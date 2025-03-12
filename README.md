@@ -1,2 +1,2 @@
 # backport-demo
-Automatically backport PRs to develop branch.
+Automatically backport to develop branch the main PR with `backport ` label.
