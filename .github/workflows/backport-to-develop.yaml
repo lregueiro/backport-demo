@@ -1,4 +1,4 @@
-name: Backport Release to Develop
+name: Backport Release/Hotfix to Develop
 
 on:
   pull_request:
@@ -12,7 +12,7 @@ jobs:
   backport:
     name: Backport to develop
     # Only run if the PR was merged (not just closed) and the head branch was a release branch
-    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
+    if: github.event.pull_request.merged == true && (startsWith(github.event.pull_request.head.ref, 'release/') || startsWith(github.event.pull_request.head.ref, 'hotfix/'))
     runs-on: ubuntu-latest
     
     steps:
@@ -33,6 +33,28 @@ jobs:
           echo "release_branch=${RELEASE_BRANCH}" >> $GITHUB_OUTPUT
           echo "Release branch is ${RELEASE_BRANCH}"
 
+      - name: Identify commits to backport
+        id: identify-commits
+        run: |
+          # Get latest commits from origin
+          git fetch origin develop
+          
+          # Get the latest commit SHA on the current branch
+          LATEST_COMMIT=$(git rev-parse HEAD)
+        
+          # Find the common ancestor of the current branch and develop
+          COMMON_ANCESTOR=$(git merge-base origin/develop HEAD)
+        
+          # Get all commit SHAs between common ancestor and latest commit, excluding merge commits
+          COMMITS_TO_BACKPORT=$(git log --no-merges --format="%H" ${COMMON_ANCESTOR}..${LATEST_COMMIT})
+        
+          echo "Found the following commits to backport (excluding merge commits):"
+          git log --no-merges --format="%h %s" ${COMMON_ANCESTOR}..${LATEST_COMMIT}
+        
+          echo "commits_to_backport<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS_TO_BACKPORT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create backport branch
         run: |
           git checkout develop
@@ -43,24 +65,33 @@ jobs:
         env:
           RELEASE_BRANCH_NAME: ${{ steps.extract-branch.outputs.release_branch }}
 
-      - name: Merge release changes
-        id: merge
+      - name: Backport commits to develop
         run: |
-          # Get the merge commit SHA from the closed PR
-          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
-          
-          # Attempt the merge
-          if git merge ${MERGE_COMMIT_SHA}; then
-            echo "merge_status=success" >> $GITHUB_OUTPUT
-            echo "Successfully merged release changes"
-          else
-            echo "merge_status=conflict" >> $GITHUB_OUTPUT
-            echo "Merge conflict occurred"
-            git merge --abort
+          # If no commits to backport, exit gracefully
+          if [[ -z "${{ env.COMMITS_TO_BACKPORT }}" ]]; then
+            echo "No non-merge commits to backport. Exiting."
+            exit 0
           fi
+          
+          # Cherry-pick each commit
+          for COMMIT in ${{ env.COMMITS_TO_BACKPORT }}; do
+            echo "Cherry-picking commit: $COMMIT"
+            if ! git cherry-pick -x "$COMMIT"; then
+              echo "Cherry-pick failed for commit $COMMIT. Resolving conflicts is required."
+              git cherry-pick --abort
+
+              # Create issue about the conflict
+              gh issue create \
+                --title "Cherry-pick failed: Backporting ${{ steps.extract-branch.outputs.release_branch }} to develop" \
+                --body "There was a cherry-pick failure for commit $COMMIT when trying to backport changes from ${{ steps.extract-branch.outputs.release_branch }} to develop. Resolving conflicts is required."
+              exit 1
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMITS_TO_BACKPORT: ${{ steps.identify-commits.outputs.commits_to_backport }}
       
-      - name: Handle successful merge
-        if: steps.merge.outputs.merge_status == 'success'
+      - name: Handle successful cherry-pick
         run: |
           BACKPORT_BRANCH="backport/${RELEASE_BRANCH_NAME}"
           git push origin ${BACKPORT_BRANCH}
@@ -74,13 +105,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_BRANCH_NAME: ${{ steps.extract-branch.outputs.release_branch }}
-      
-      - name: Handle merge conflict
-        if: steps.merge.outputs.merge_status == 'conflict'
-        run: |
-          # Create issue about the conflict
-          gh issue create \
-            --title "Merge conflict: Backporting ${{ steps.extract-branch.outputs.release_branch }} to develop" \
-            --body "There was a merge conflict when trying to backport changes from ${{ steps.extract-branch.outputs.release_branch }} to develop. Manual intervention is required."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
