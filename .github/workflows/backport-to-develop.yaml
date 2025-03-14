@@ -70,7 +70,7 @@ jobs:
         run: |
           git checkout develop
           git pull origin develop
-          RELEASE_BRANCH_NAME="${{ steps.extract-branch.outputs.release_branch }}""
+          RELEASE_BRANCH_NAME="${{ steps.extract-branch.outputs.release_branch }}"
           BACKPORT_BRANCH="backport/$RELEASE_BRANCH_NAME"
           git checkout -b ${BACKPORT_BRANCH}
           echo "Created backport branch: ${BACKPORT_BRANCH}"
