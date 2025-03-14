@@ -30,7 +30,7 @@ jobs:
           if echo "$LABELS" | grep -q "$LABEL_BACKPORT" || echo "$LABELS" | grep -q "$LABEL_NOT_BACKPORT"; then
               echo "PR with valid backport label:"
           fi
-          if  if echo "$LABELS" | grep -q "$LABEL_BACKPORT"; then
+          if echo "$LABELS" | grep -q "$LABEL_BACKPORT"; then
             echo "backport_status=continue" >> $GITHUB_OUTPUT
             echo "${LABEL_BACKPORT}"
           else
