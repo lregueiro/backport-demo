@@ -32,10 +32,10 @@ jobs:
           fi
           if  if echo "$LABELS" | grep -q "$LABEL_BACKPORT"; then
             echo "backport_status=continue" >> $GITHUB_OUTPUT
-            echo "$LABEL_BACKPORT"
+            echo "${LABEL_BACKPORT}"
           else
             echo "backport_status=abort" >> $GITHUB_OUTPUT
-            echo "$LABEL_NOT_BACKPORT"
+            echo "${LABEL_NOT_BACKPORT}"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
