@@ -32,6 +32,10 @@ jobs:
               echo "PR does not have any of the required labels: $LABEL_BACKPORT or $LABEL_NOT_BACKPORT"
               exit 1
           fi
+          if echo "$LABELS" | grep -q "$LABEL_NOT_BACKPORT"; then
+              echo "PR with not backport action"
+              exit 0
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -40,66 +44,43 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
       
-      - name: Extract release branch name
+      - name: Extract pr branch name
         id: extract-branch
         run: |
-          RELEASE_BRANCH="${{ github.event.pull_request.head.ref }}"
-          echo "release_branch=${RELEASE_BRANCH}" >> $GITHUB_OUTPUT
-          echo "Release branch is ${RELEASE_BRANCH}"
-
-      - name: Identify commits to backport
-        id: identify-commits
-        run: |
-          # Get the commit SHAs of the PR
-          COMMITS_TO_BACKPORT=$(gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits | .[].oid')
-          
-          echo "Found the following commits to backport:"
-          gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits | .[] | "\(.oid) \(.messageHeadline)"'
-          
-          echo "commits_to_backport<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS_TO_BACKPORT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          PR_BRANCH="${{ github.event.pull_request.head.ref }}"
+          echo "pr_branch=${PR_BRANCH}" >> $GITHUB_OUTPUT
+          echo "Release branch is ${PR_BRANCH}"
 
       - name: Create backport branch
         run: |
           git checkout develop
           git pull origin develop
-          BACKPORT_BRANCH="backport/${RELEASE_BRANCH_NAME}"
+          PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
+          BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
           git checkout -b ${BACKPORT_BRANCH}
           echo "Created backport branch: ${BACKPORT_BRANCH}"
-        env:
-          RELEASE_BRANCH_NAME: ${{ steps.extract-branch.outputs.release_branch }}
 
-      - name: Backport commits to develop
+      - name: Merge PR changes
+        id: merge
         run: |
-          COMMITS_TO_BACKPORT="${{ steps.identify-commits.outputs.commits_to_backport }}"
-          # If no commits to backport, exit gracefully
-          if [[ -z "$COMMITS_TO_BACKPORT" ]]; then
-            echo "No non-merge commits to backport. Exiting."
-            exit 0
-          fi
+          # Get the merge commit SHA from the closed PR
+          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
           
-          # Cherry-pick each commit
-          for COMMIT in $COMMITS_TO_BACKPORT; do
-            echo "Cherry-picking commit: $COMMIT"
-            if ! git cherry-pick -x "$COMMIT"; then
-              echo "Cherry-pick failed for commit $COMMIT. Resolving conflicts is required."
-              git cherry-pick --abort
-
-              # Create issue about the conflict
-              gh issue create \
-                --title "Cherry-pick failed: Backporting ${{ steps.extract-branch.outputs.release_branch }} to develop" \
-                --body "There was a cherry-pick failure for commit $COMMIT when trying to backport changes from ${{ steps.extract-branch.outputs.release_branch }} to develop. Resolving conflicts is required."
-              exit 1
-            fi
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Attempt the merge
+          if git merge ${MERGE_COMMIT_SHA}; then
+            echo "merge_status=success" >> $GITHUB_OUTPUT
+            echo "Successfully merged PR changes"
+          else
+            echo "merge_status=conflict" >> $GITHUB_OUTPUT
+            echo "Merge conflict occurred"
+            git merge --abort
+          fi
       
-      - name: Handle successful cherry-pick
+      - name: Handle successful merge
+        if: steps.merge.outputs.merge_status == 'success'
         run: |
-          RELEASE_BRANCH_NAME="${{ steps.extract-branch.outputs.release_branch }}"
-          BACKPORT_BRANCH="backport/$RELEASE_BRANCH_NAME"
+          PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
+          BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
           git push origin ${BACKPORT_BRANCH}
           
           # Create PR using GitHub CLI
@@ -107,6 +88,16 @@ jobs:
             --base develop \
             --head ${BACKPORT_BRANCH} \
             --title "Backport: ${{ github.event.pull_request.title }}" \
-            --body "This PR backports changes from ${{ steps.extract-branch.outputs.release_branch }} that were merged into main via #${{ github.event.pull_request.number }}."
+            --body "This PR backports changes from ${{ steps.extract-branch.outputs.pr_branch }} that were merged into main via #${{ github.event.pull_request.number }}."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Handle merge conflict
+        if: steps.merge.outputs.merge_status == 'conflict'
+        run: |
+          # Create issue about the conflict
+          gh issue create \
+            --title "Merge conflict: Backporting ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
+            --body "There was a merge conflict when trying to backport changes from ${{ steps.extract-branch.outputs.pr_branch }} to develop. Manual intervention is required."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
