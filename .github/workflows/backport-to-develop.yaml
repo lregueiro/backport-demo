@@ -55,7 +55,7 @@ jobs:
         id: identify-commits
         run: |
           # Get the commit SHAs of the PR
-          COMMITS_TO_BACKPORT=$(gh pr view ${{ github.event.pull_request.number }} --json commits --jq ''.commits | .[].oid')
+          COMMITS_TO_BACKPORT=$(gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits | .[].oid')
           
           echo "Found the following commits to backport:"
           gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits | .[] | "\(.oid) \(.messageHeadline)"'
