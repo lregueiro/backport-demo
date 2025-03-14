@@ -32,6 +32,10 @@ jobs:
               echo "PR does not have any of the required labels: $LABEL_BACKPORT or $LABEL_NOT_BACKPORT"
               exit 1
           fi
+          if echo "$LABELS" | grep -q "$LABEL_NOT_BACKPORT"; then
+              echo "PR with not backport action"
+              exit 0
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,34 +54,26 @@ jobs:
       - name: Identify commits to backport
         id: identify-commits
         run: |
-          # Get latest commits from origin
-          git fetch origin develop
+          # Get the commit SHAs of the PR (excluding merge commits)
+          COMMITS_TO_BACKPORT=$(gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits | map(select(.commit.parents | length == 1)) | .[].commit.oid')
           
-          # Get the latest commit SHA on the current branch
-          LATEST_COMMIT=$(git rev-parse HEAD)
-        
-          # Find the common ancestor of the current branch and develop
-          COMMON_ANCESTOR=$(git merge-base origin/develop HEAD)
-        
-          # Get all commit SHAs between common ancestor and latest commit, excluding merge commits
-          COMMITS_TO_BACKPORT=$(git log --no-merges --format="%H" ${COMMON_ANCESTOR}..${LATEST_COMMIT})
-        
           echo "Found the following commits to backport (excluding merge commits):"
-          git log --no-merges --format="%h %s" ${COMMON_ANCESTOR}..${LATEST_COMMIT}
-        
+          gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits | map(select(.commit.parents | length == 1)) | .[].commit | "\(.oid) \(.messageHeadline)"'
+          
           echo "commits_to_backport<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMITS_TO_BACKPORT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create backport branch
         run: |
           git checkout develop
           git pull origin develop
-          BACKPORT_BRANCH="backport/${RELEASE_BRANCH_NAME}"
+          RELEASE_BRANCH_NAME="${{ steps.extract-branch.outputs.release_branch }}""
+          BACKPORT_BRANCH="backport/$RELEASE_BRANCH_NAME"
           git checkout -b ${BACKPORT_BRANCH}
           echo "Created backport branch: ${BACKPORT_BRANCH}"
-        env:
-          RELEASE_BRANCH_NAME: ${{ steps.extract-branch.outputs.release_branch }}
 
       - name: Backport commits to develop
         run: |
