@@ -22,29 +22,32 @@ jobs:
           fetch-depth: 0  # We need the full history for merging
       
       - name: Check for backport labels
+        id: check-backport
         run: |
           LABEL_BACKPORT="backport develop"
           LABEL_NOT_BACKPORT="not backport"
           LABELS=$(gh pr view ${{ github.event.pull_request.number }} --json labels --jq '.labels[].name')
           if echo "$LABELS" | grep -q "$LABEL_BACKPORT" || echo "$LABELS" | grep -q "$LABEL_NOT_BACKPORT"; then
-              echo "PR with valid backport label"
-          else
-              echo "PR does not have any of the required labels: $LABEL_BACKPORT or $LABEL_NOT_BACKPORT"
-              exit 1
+              echo "PR with valid backport label:"
           fi
-          if echo "$LABELS" | grep -q "$LABEL_NOT_BACKPORT"; then
-              echo "PR with not backport action"
-              exit 0
+          if  if echo "$LABELS" | grep -q "$LABEL_BACKPORT"; then
+            echo "backport_status=continue" >> $GITHUB_OUTPUT
+            echo "$LABEL_BACKPORT"
+          else
+            echo "backport_status=abort" >> $GITHUB_OUTPUT
+            echo "$LABEL_NOT_BACKPORT"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
+        if: steps.check-backport.outputs.backport_status == 'continue'
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
       
       - name: Extract pr branch name
+        if: steps.check-backport.outputs.backport_status == 'continue'
         id: extract-branch
         run: |
           PR_BRANCH="${{ github.event.pull_request.head.ref }}"
@@ -52,6 +55,7 @@ jobs:
           echo "Release branch is ${PR_BRANCH}"
 
       - name: Create backport branch
+        if: steps.check-backport.outputs.backport_status == 'continue'
         run: |
           git checkout develop
           git pull origin develop
@@ -61,6 +65,7 @@ jobs:
           echo "Created backport branch: ${BACKPORT_BRANCH}"
 
       - name: Merge PR changes
+        if: steps.check-backport.outputs.backport_status == 'continue'
         id: merge
         run: |
           # Get the merge commit SHA from the closed PR
