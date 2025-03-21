@@ -20,7 +20,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: develop
+          fetch-depth: 0
       
       - name: Check for backport labels
         id: check-backport
@@ -70,7 +70,7 @@ jobs:
         id: merge
         run: |
           # Get the merge commit SHA from the closed PR
-          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+          MERGE_COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
           
           # Attempt the merge
           if git merge ${MERGE_COMMIT_SHA}; then
