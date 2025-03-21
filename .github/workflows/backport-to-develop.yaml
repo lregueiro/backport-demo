@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - master
+      - 4.13.*
 
 jobs:
   backport:
