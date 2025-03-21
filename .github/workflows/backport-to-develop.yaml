@@ -69,11 +69,11 @@ jobs:
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: merge
         run: |
-          # Get the PR HEAD commit SHA from the closed PR
-          PR_HEAD_COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+          # Get the merge commit SHA from the closed PR
+          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
           
           # Attempt the merge
-          if git merge ${PR_HEAD_COMMIT_SHA}; then
+          if git merge ${MERGE_COMMIT_SHA}; then
             echo "merge_status=success" >> $GITHUB_OUTPUT
             echo "Successfully merged PR changes"
           else
