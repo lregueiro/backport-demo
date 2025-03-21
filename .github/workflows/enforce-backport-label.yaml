@@ -6,6 +6,7 @@ on:
     branches:
         - main
         - master
+        - 4.13.*
 
 jobs:
   check-label:
@@ -17,8 +18,8 @@ jobs:
           script: |
                 const hasBackportLabel = context.payload.pull_request.labels.some(label => {
                   const name = label.name.toLowerCase();
-                  return name.startsWith('backport develop') || name.startsWith('not backport');
+                  return name.startsWith('backport-to-develop') || name.startsWith('do-not-backport');
                 });
                 if (!hasBackportLabel) {
-                    throw new Error('Pull request must have a label that starts with "backport develop" or "not backport".');
+                    throw new Error('Pull request must have a label "backport-to-develop" or "do-not-backport".');
                 }
