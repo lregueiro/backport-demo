@@ -20,7 +20,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # We need the full history for merging
+          ref: ${{ github.event.pull_request.head.sha }}
       
       - name: Check for backport labels
         id: check-backport
