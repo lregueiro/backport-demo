@@ -56,17 +56,17 @@ jobs:
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: identify-commits
         run: |
-          PR_BRANCH="${{ steps.extract-branch.outputs.pr_branch }}"
-          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           # Get missing commit SHAs from base branch, excluding merge commits
-          COMMITS_TO_BACKPORT=$(git log --format="%H" ${PR_BRANCH}  --no-merges --not ${BASE_BRANCH})
+          COMMITS_TO_BACKPORT=$(git log --format="%H" --cherry-pick --right-only --no-merges ${BASE_SHA}...${PR_HEAD_SHA})
 
           echo "Found the following commits to backport (excluding merge commits):"
           echo "commits_to_backport=${COMMITS_TO_BACKPORT}"
           
-          echo "commits_to_backport<<EOF" >> $GITHUB_ENV
-          echo "$COMMITS_TO_BACKPORT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          echo "commits_to_backport<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS_TO_BACKPORT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create backport branch
         if: steps.check-backport.outputs.backport_status == 'continue'
@@ -86,7 +86,7 @@ jobs:
           # If no commits to backport, exit gracefully
           if [[ -z "$COMMITS_TO_BACKPORT" ]]; then
             echo "No non-merge commits to backport. Exiting."
-            echo "backport_status=abort" >> $GITHUB_OUTPUT
+            echo "cherry_pick_status=exit" >> $GITHUB_OUTPUT
             exit 0
           else
             echo "cherry_pick_status=success" >> $GITHUB_OUTPUT
@@ -98,9 +98,7 @@ jobs:
             if ! git cherry-pick -x "$COMMIT"; then
               echo "Cherry-pick failed for commit $COMMIT. Resolving conflicts is required."
               git cherry-pick --abort
-              echo "backport_status=abort" >> $GITHUB_OUTPUT
               echo "cherry_pick_status=conflict" >> $GITHUB_OUTPUT
-              exit 1
             fi
           done
         env:
