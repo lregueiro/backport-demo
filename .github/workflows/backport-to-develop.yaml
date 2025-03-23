@@ -56,11 +56,13 @@ jobs:
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: identify-commits
         run: |
-          git fetch --all
           PR_BRANCH="${{ steps.extract-branch.outputs.pr_branch }}"
           BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           # Get missing commit SHAs from base branch, excluding merge commits
-          COMMITS_TO_BACKPORT=$(git log --format="%H" ${PR_BRANCH}  --no-merges --not origin/${BASE_BRANCH})
+          COMMITS_TO_BACKPORT=$(git log --format="%H" --cherry-pick --right-only --no-merges ${BASE_SHA}...${PR_HEAD_SHA})
+          # COMMITS_TO_BACKPORT=$(git log --format="%H" ${PR_BRANCH}  --no-merges --not origin/${BASE_BRANCH})
 
           echo "Found the following commits to backport (excluding merge commits):"
           echo "commits_to_backport=${COMMITS_TO_BACKPORT}"
