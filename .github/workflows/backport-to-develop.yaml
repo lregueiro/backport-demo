@@ -14,7 +14,17 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     
-    steps:
+    steps: 
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
       - name: Check for backport labels
         id: check-backport
         run: |
@@ -33,18 +43,6 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Checkout repository
-        if: steps.check-backport.outputs.backport_status == 'continue'
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-          
-      - name: Configure Git
-        if: steps.check-backport.outputs.backport_status == 'continue'
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
       - name: Extract PR branch name
         if: steps.check-backport.outputs.backport_status == 'continue'
