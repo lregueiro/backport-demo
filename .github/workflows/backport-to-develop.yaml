@@ -59,7 +59,7 @@ jobs:
           PR_BRANCH="${{ steps.extract-branch.outputs.pr_branch }}"
           BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
           # Get missing commit SHAs from base branch, excluding merge commits
-          COMMITS_TO_BACKPORT=$(git log --format="%H" ${PR_BRANCH}  --no-merges --not ${BASE_BRANCH})
+          COMMITS_TO_BACKPORT=$(git log --format="%H" ${PR_BRANCH}"  --no-merges --not origin/${BASE_BRANCH})
 
           echo "Found the following commits to backport (excluding merge commits):"
           echo "commits_to_backport=${COMMITS_TO_BACKPORT}"
