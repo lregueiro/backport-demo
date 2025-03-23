@@ -52,16 +52,6 @@ jobs:
           echo "pr_branch=${PR_BRANCH}" >> $GITHUB_OUTPUT
           echo "PR branch is ${PR_BRANCH}"
       
-      - name: Create backport branch
-        if: steps.check-backport.outputs.backport_status == 'continue'
-        run: |
-          git checkout develop
-          git pull origin develop
-          PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
-          BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
-          git checkout -b ${BACKPORT_BRANCH}
-          echo "Created backport branch: ${BACKPORT_BRANCH}"
-
       - name: Identify commits to backport
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: identify-commits
@@ -77,6 +67,16 @@ jobs:
           echo "commits_to_backport<<EOF" >> $GITHUB_ENV
           echo "$COMMITS_TO_BACKPORT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
+
+      - name: Create backport branch
+        if: steps.check-backport.outputs.backport_status == 'continue'
+        run: |
+          git checkout develop
+          git pull origin develop
+          PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
+          BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
+          git checkout -b ${BACKPORT_BRANCH}
+          echo "Created backport branch: ${BACKPORT_BRANCH}"
 
       - name: Cherry pick commits
         if: steps.check-backport.outputs.backport_status == 'continue'
