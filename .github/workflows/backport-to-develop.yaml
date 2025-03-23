@@ -86,7 +86,7 @@ jobs:
           # If no commits to backport, exit gracefully
           if [[ -z "$COMMITS_TO_BACKPORT" ]]; then
             echo "No non-merge commits to backport. Exiting."
-            echo "backport_status=abort" >> $GITHUB_OUTPUT
+            echo "cherry_pick_status=exit" >> $GITHUB_OUTPUT
             exit 0
           else
             echo "cherry_pick_status=success" >> $GITHUB_OUTPUT
@@ -98,9 +98,7 @@ jobs:
             if ! git cherry-pick -x "$COMMIT"; then
               echo "Cherry-pick failed for commit $COMMIT. Resolving conflicts is required."
               git cherry-pick --abort
-              echo "backport_status=abort" >> $GITHUB_OUTPUT
               echo "cherry_pick_status=conflict" >> $GITHUB_OUTPUT
-              exit 1
             fi
           done
         env:
