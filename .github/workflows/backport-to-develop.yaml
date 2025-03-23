@@ -5,8 +5,6 @@ on:
     types:
       - closed
     branches:
-      - main
-      - master
       - 4.13.*
 
 jobs:
@@ -17,11 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
       - name: Check for backport labels
         id: check-backport
         run: |
@@ -40,13 +33,19 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      
+      - name: Checkout repository
+        if: steps.check-backport.outputs.backport_status == 'continue'
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
       - name: Configure Git
         if: steps.check-backport.outputs.backport_status == 'continue'
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-      
+
       - name: Extract PR branch name
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: extract-branch
@@ -54,7 +53,7 @@ jobs:
           PR_BRANCH="${{ github.event.pull_request.head.ref }}"
           echo "pr_branch=${PR_BRANCH}" >> $GITHUB_OUTPUT
           echo "PR branch is ${PR_BRANCH}"
-
+      
       - name: Create backport branch
         if: steps.check-backport.outputs.backport_status == 'continue'
         run: |
@@ -65,25 +64,52 @@ jobs:
           git checkout -b ${BACKPORT_BRANCH}
           echo "Created backport branch: ${BACKPORT_BRANCH}"
 
-      - name: Merge PR changes
+      - name: Identify commits to backport
         if: steps.check-backport.outputs.backport_status == 'continue'
-        id: merge
+        id: identify-commits
         run: |
-          # Get the merge commit SHA from the closed PR
-          MERGE_COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+          PR_BRANCH="${{ steps.extract-branch.outputs.pr_branch }}"
+          BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
+          # Get missing commit SHAs from base branch, excluding merge commits
+          COMMITS_TO_BACKPORT=$(git log --format="%H" ${PR_BRANCH}  --no-merges --not ${BASE_BRANCH})
+
+          echo "Found the following commits to backport (excluding merge commits):"
+          echo "commits_to_backport=${COMMITS_TO_BACKPORT}"
           
-          # Attempt the merge
-          if git merge ${MERGE_COMMIT_SHA}; then
-            echo "merge_status=success" >> $GITHUB_OUTPUT
-            echo "Successfully merged PR changes"
+          echo "commits_to_backport<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS_TO_BACKPORT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Cherry pick commits
+        if: steps.check-backport.outputs.backport_status == 'continue'
+        id: cherry-pick
+        run: |
+          COMMITS_TO_BACKPORT="${{ steps.identify-commits.outputs.commits_to_backport }}"
+          # If no commits to backport, exit gracefully
+          if [[ -z "$COMMITS_TO_BACKPORT" ]]; then
+            echo "No non-merge commits to backport. Exiting."
+            echo "backport_status=abort" >> $GITHUB_OUTPUT
+            exit 0
           else
-            echo "merge_status=conflict" >> $GITHUB_OUTPUT
-            echo "Merge conflict occurred"
-            git merge --abort
+            echo "cherry_pick_status=success" >> $GITHUB_OUTPUT
           fi
-      
-      - name: Handle successful merge
-        if: steps.merge.outputs.merge_status == 'success'
+          
+          # Cherry-pick each commit
+          for COMMIT in $COMMITS_TO_BACKPORT; do
+            echo "Cherry-picking commit: $COMMIT"
+            if ! git cherry-pick -x "$COMMIT"; then
+              echo "Cherry-pick failed for commit $COMMIT. Resolving conflicts is required."
+              git cherry-pick --abort
+              echo "backport_status=abort" >> $GITHUB_OUTPUT
+              echo "cherry_pick_status=conflict" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Handle successful cherry-pick
+        if: steps.cherry-pick.outputs.cherry_pick_status == 'success'
         run: |
           PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
           BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
@@ -99,13 +125,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Handle merge conflict
-        if: steps.merge.outputs.merge_status == 'conflict'
+      - name: Handle cherry-pick conflict
+        if: steps.cherry-pick.outputs.cherry_pick_status == 'conflict'
         run: |
           # Create issue about the conflict
           gh issue create \
             --assignee "${{ github.event.pull_request.user.login }}" \
-            --title "Merge conflict: Backporting ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
-            --body "There was a merge conflict when trying to backport changes from ${{ steps.extract-branch.outputs.pr_branch }} #${{ github.event.pull_request.number }} to develop. Manual backport changes into develop branch is required."
+            --title "Cherry pick conflict: Backporting ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
+            --body "There was a cherry pick conflict when trying to backport changes from ${{ steps.extract-branch.outputs.pr_branch }} #${{ github.event.pull_request.number }} to develop. Manual backport changes into develop branch is required."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
