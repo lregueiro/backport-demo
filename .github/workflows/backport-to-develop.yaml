@@ -128,6 +128,6 @@ jobs:
           gh issue create \
             --assignee "${{ github.event.pull_request.user.login }}" \
             --title "Cherry pick conflict: Backporting ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
-            --body "There was a cherry pick conflict when trying to backport changes from ${{ steps.extract-branch.outputs.pr_branch }} #${{ github.event.pull_request.number }} to develop. Manual backport changes into develop branch is required."
+            --body "There was a cherry pick conflict when trying to backport changes from PR #${{ github.event.pull_request.number }} to develop branch. Manual backport changes into develop branch is required."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
