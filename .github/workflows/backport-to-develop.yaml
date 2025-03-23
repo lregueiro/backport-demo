@@ -56,6 +56,7 @@ jobs:
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: identify-commits
         run: |
+          git fetch --all
           PR_BRANCH="${{ steps.extract-branch.outputs.pr_branch }}"
           BASE_BRANCH="${{ github.event.pull_request.base.ref }}"
           # Get missing commit SHAs from base branch, excluding merge commits
