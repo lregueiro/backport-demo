@@ -56,6 +56,7 @@ jobs:
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: backport-pr
         run: |
+          echo "status=fail" >> $GITHUB_OUTPUT
           PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
           BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
           git fetch origin ${PR_BRANCH_NAME}:${BACKPORT_BRANCH}
@@ -77,7 +78,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Handle backport PR creation failure
-        if: steps.backport-pr.outputs.status != 'success'
+        if: steps.backport-pr.outputs.status == 'fail'
         run: |
           # Create issue about the conflict
           gh issue create \
