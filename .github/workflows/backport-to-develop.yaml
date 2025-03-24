@@ -58,8 +58,9 @@ jobs:
         run: |
           echo "status=fail" >> $GITHUB_OUTPUT
           PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
           BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
-          git fetch origin ${PR_BRANCH_NAME}:${BACKPORT_BRANCH}
+          git fetch origin pull/${PR_NUMBER}/head:${BACKPORT_BRANCH}
           git checkout ${BACKPORT_BRANCH}
           git push origin ${BACKPORT_BRANCH}
           echo "Created backport branch: ${BACKPORT_BRANCH}"
