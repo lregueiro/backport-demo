@@ -86,6 +86,7 @@ jobs:
           for COMMIT in $COMMITS; do
             git cherry-pick --strategy=recursive -X ours $COMMIT || {
               echo "Failed to cherry-pick commit $COMMIT"
+              git cherry-pick --abort
               exit 1
             }
           done
