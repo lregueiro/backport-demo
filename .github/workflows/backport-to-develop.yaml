@@ -1,70 +1,96 @@
 name: Backport to Develop
-
 on:
   pull_request:
     types:
       - closed
     branches:
-      - 4.13.*
+      - main
+      - 'release/**'
+      - '4.13.*'
 
 jobs:
   backport:
     name: Backport to develop
-    # Only run if the PR was merged (not just closed)
-    if: github.event.pull_request.merged == true
+    # Only run if the PR was merged and not on develop branch already
+    if: >
+      github.event.pull_request.merged == true && 
+      github.event.pull_request.base.ref != 'develop'
     runs-on: ubuntu-latest
-    
-    steps: 
+   
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          
+         
       - name: Configure Git
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-
+      
       - name: Check for backport labels
         id: check-backport
         run: |
           LABEL_BACKPORT="backport-to-develop"
           LABEL_DO_NOT_BACKPORT="do-not-backport"
           LABELS=$(gh pr view ${{ github.event.pull_request.number }} --json labels --jq '.labels[].name')
-          if echo "$LABELS" | grep -q "$LABEL_BACKPORT" || echo "$LABELS" | grep -q "$LABEL_DO_NOT_BACKPORT"; then
-              echo "PR with valid backport label:"
+          
+          if echo "$LABELS" | grep -q "$LABEL_DO_NOT_BACKPORT"; then
+            echo "backport_status=abort" >> $GITHUB_OUTPUT
+            exit 0
           fi
+          
           if echo "$LABELS" | grep -q "$LABEL_BACKPORT"; then
             echo "backport_status=continue" >> $GITHUB_OUTPUT
-            echo "${LABEL_BACKPORT}"
           else
             echo "backport_status=abort" >> $GITHUB_OUTPUT
-            echo "${LABEL_DO_NOT_BACKPORT}"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract PR branch name
+      
+      - name: Extract PR branch commits
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: extract-branch
         run: |
+          # Fetch the PR branch
           PR_BRANCH="${{ github.event.pull_request.head.ref }}"
+          ORIGINAL_BASE_REF="${{ github.event.pull_request.base.ref }}"
+          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+          
           echo "pr_branch=${PR_BRANCH}" >> $GITHUB_OUTPUT
-          echo "PR branch is ${PR_BRANCH}"
-
+          
+          # Get commits unique to the PR branch
+          COMMITS=$(git rev-list --no-merges ^$ORIGINAL_BASE_REF $MERGE_COMMIT_SHA)
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        
       - name: Create backport PR into develop
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: backport-pr
         run: |
           echo "status=fail" >> $GITHUB_OUTPUT
           PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
-          BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
-          FIRST_COMMIT=$(git rev-list --reverse ${{ github.event.pull_request.head.sha }} | head -n 1)
-          git checkout -b ${BACKPORT_BRANCH} ${FIRST_COMMIT}
-
-          git push origin ${BACKPORT_BRANCH}
-          echo "Created backport branch: ${BACKPORT_BRANCH}"
-
+          BACKPORT_BRANCH="backport/${PR_BRANCH_NAME}-to-develop"
+          
+          # Checkout develop branch
+          git checkout origin/develop
+          
+          # Create new backport branch
+          git checkout -b ${BACKPORT_BRANCH}
+          
+          # Cherry-pick commits from the original PR
+          COMMITS="${{ steps.extract-branch.outputs.commits }}"
+          for COMMIT in $COMMITS; do
+            git cherry-pick $COMMIT || {
+              echo "Failed to cherry-pick commit $COMMIT"
+              exit 1
+            }
+          done
+          
+          # Push backport branch
+          git push -u origin ${BACKPORT_BRANCH}
+          
           # Create PR using GitHub CLI
           gh pr create \
             --base develop \
@@ -72,19 +98,22 @@ jobs:
             --assignee "${{ github.event.pull_request.user.login }}" \
             --title "Backport: ${{ github.event.pull_request.title }}" \
             --body "This PR backports changes from ${{ steps.extract-branch.outputs.pr_branch }} that were merged into ${{ github.event.pull_request.base.ref }} via #${{ github.event.pull_request.number }}."
-          
+         
           echo "status=success" >> $GITHUB_OUTPUT
-          echo "Backport PR created successfully"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      
       - name: Handle backport PR creation failure
-        if: steps.backport-pr.outputs.status == 'fail'
+        if: failure() && steps.check-backport.outputs.backport_status == 'continue'
         run: |
-          # Create issue about the conflict
           gh issue create \
             --assignee "${{ github.event.pull_request.user.login }}" \
-            --title "Fail to backport ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
-            --body "There was failure when trying to backport changes from PR #${{ github.event.pull_request.number }} to develop branch. Manual backport changes into develop branch is required."
+            --title "Failed to backport ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
+            --body "Backport failed for PR #${{ github.event.pull_request.number }}. Manual backport may be required./n/n
+              Potential reasons:
+              - Cherry-pick conflicts
+              - Commits cannot be applied cleanly to develop branch
+              - Branch protection rules
+              - Insufficient permissions"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
