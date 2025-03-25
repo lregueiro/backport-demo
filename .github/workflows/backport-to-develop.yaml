@@ -129,7 +129,7 @@ jobs:
               - Branch protection rules
               - Insufficient permissions
 
-              ${{ steps.backport-pr.outputs.error }}"
+              ${{ steps.backport-pr.outputs.error }}
               "
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
