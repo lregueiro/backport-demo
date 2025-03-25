@@ -76,7 +76,7 @@ jobs:
           
           # Checkout develop branch
           git checkout origin/develop
-          git pull
+          git pull origin develop
           
           # Create new backport branch
           git checkout -b ${BACKPORT_BRANCH}
