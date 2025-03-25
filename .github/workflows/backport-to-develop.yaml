@@ -25,23 +25,27 @@ jobs:
          
       - name: Configure Git
         run: |
+          # To github-actions[bot] user
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
       
       - name: Check for backport labels
         id: check-backport
         run: |
+          # Backport labels
           LABEL_BACKPORT="backport-to-develop"
           LABEL_DO_NOT_BACKPORT="do-not-backport"
           LABELS=$(gh pr view ${{ github.event.pull_request.number }} --json labels --jq '.labels[].name')
           
           if echo "$LABELS" | grep -q "$LABEL_DO_NOT_BACKPORT"; then
             echo "backport_status=abort" >> $GITHUB_OUTPUT
+            echo "Found label=${LABEL_DO_NOT_BACKPORT}"
             exit 0
           fi
           
           if echo "$LABELS" | grep -q "$LABEL_BACKPORT"; then
             echo "backport_status=continue" >> $GITHUB_OUTPUT
+            echo "Found label=${LABEL_BACKPORT}"
           else
             echo "backport_status=abort" >> $GITHUB_OUTPUT
           fi
@@ -70,9 +74,11 @@ jobs:
         if: steps.check-backport.outputs.backport_status == 'continue'
         id: backport-pr
         run: |
-          echo "status=fail" >> $GITHUB_OUTPUT
+          # Backport PR
           PR_BRANCH="${{ steps.extract-branch.outputs.pr_branch }}"
           BACKPORT_BRANCH="backport/${PR_BRANCH}"
+
+          echo "Backport branch=${BACKPORT_BRANCH}"
           
           # Checkout develop branch
           git checkout develop
@@ -85,11 +91,14 @@ jobs:
           COMMITS="${{ steps.extract-branch.outputs.commits_to_backport }}"
           for COMMIT in $COMMITS; do
             git cherry-pick --strategy=recursive -X ours $COMMIT || {
-              echo "Failed to cherry-pick commit $COMMIT"
+              echo "Failed to cherry-pick commit: $COMMIT"
+              echo "error=Failed to cherry-pick commit: $COMMIT" >> $GITHUB_OUTPUT
               git cherry-pick --abort
               exit 1
             }
           done
+
+          echo "Cherry-picked commits from ${PR_BRANCH} PR #${{ github.event.pull_request.number }}"
           
           # Push backport branch
           git push origin ${BACKPORT_BRANCH}
@@ -102,13 +111,14 @@ jobs:
             --title "Backport: ${{ github.event.pull_request.title }}" \
             --body "This PR backports changes from ${{ steps.extract-branch.outputs.pr_branch }} that were merged into ${{ github.event.pull_request.base.ref }} via #${{ github.event.pull_request.number }}."
          
-          echo "status=success" >> $GITHUB_OUTPUT
+          echo "Created backport PR for ${PR_BRANCH} into develop"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Handle backport PR creation failure
         if: failure() && steps.check-backport.outputs.backport_status == 'continue'
         run: |
+          # Create issue for failed backport
           gh issue create \
             --assignee "${{ github.event.pull_request.user.login }}" \
             --title "Failed to backport ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
@@ -117,6 +127,9 @@ jobs:
               - Cherry-pick conflicts
               - Commits cannot be applied cleanly to develop branch
               - Branch protection rules
-              - Insufficient permissions"
+              - Insufficient permissions
+
+              ${{ steps.backport-pr.outputs.error }}"
+              "
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
