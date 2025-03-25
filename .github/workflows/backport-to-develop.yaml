@@ -75,7 +75,7 @@ jobs:
           BACKPORT_BRANCH="backport/${PR_BRANCH}"
           
           # Checkout develop branch
-          git checkout origin/develop
+          git checkout develop
           git pull origin develop
           
           # Create new backport branch
@@ -84,14 +84,14 @@ jobs:
           # Cherry-pick commits from the original PR
           COMMITS="${{ steps.extract-branch.outputs.commits_to_backport }}"
           for COMMIT in $COMMITS; do
-            git cherry-pick --strategy=recursive -X theirs $COMMIT || {
+            git cherry-pick --strategy=recursive -X ours $COMMIT || {
               echo "Failed to cherry-pick commit $COMMIT"
               exit 1
             }
           done
           
           # Push backport branch
-          git push -u origin ${BACKPORT_BRANCH}
+          git push origin ${BACKPORT_BRANCH}
           
           # Create PR using GitHub CLI
           gh pr create \
