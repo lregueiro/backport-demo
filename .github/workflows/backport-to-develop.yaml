@@ -122,7 +122,7 @@ jobs:
           gh issue create \
             --assignee "${{ github.event.pull_request.user.login }}" \
             --title "Failed to backport ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
-            --body "Backport to develop failed for PR #${{ github.event.pull_request.number }}. Manual backport may be required.
+            --body "Failed to backport PR #${{ github.event.pull_request.number }} changes into develop branch. Manual intervention may be required.
               Potential reasons:
               - Cherry-pick conflicts
               - Commits cannot be applied cleanly to develop branch
