@@ -54,15 +54,16 @@ jobs:
         run: |
           # Fetch the PR branch
           PR_BRANCH="${{ github.event.pull_request.head.ref }}"
-          ORIGINAL_BASE_REF="${{ github.event.pull_request.base.ref }}"
-          MERGE_COMMIT_SHA="${{ github.event.pull_request.merge_commit_sha }}"
-          
           echo "pr_branch=${PR_BRANCH}" >> $GITHUB_OUTPUT
-          
+
           # Get commits unique to the PR branch
-          COMMITS=$(git rev-list --no-merges ^$ORIGINAL_BASE_REF $MERGE_COMMIT_SHA)
-          echo "commits<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
+          COMMITS_TO_BACKPORT=$(git log --no-merges --pretty=format:"%H" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
+          
+          echo "Found the following commits to backport (excluding merge commits):"
+          echo "commits_to_backport=${COMMITS_TO_BACKPORT}"
+
+          echo "commits_to_backport<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS_TO_BACKPORT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         
       - name: Create backport PR into develop
@@ -70,17 +71,18 @@ jobs:
         id: backport-pr
         run: |
           echo "status=fail" >> $GITHUB_OUTPUT
-          PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
-          BACKPORT_BRANCH="backport/${PR_BRANCH_NAME}-to-develop"
+          PR_BRANCH="${{ steps.extract-branch.outputs.pr_branch }}"
+          BACKPORT_BRANCH="backport/${PR_BRANCH}-to-develop"
           
           # Checkout develop branch
           git checkout origin/develop
+          git pull
           
           # Create new backport branch
           git checkout -b ${BACKPORT_BRANCH}
           
           # Cherry-pick commits from the original PR
-          COMMITS="${{ steps.extract-branch.outputs.commits }}"
+          COMMITS="${{ steps.extract-branch.outputs.commits_to_backport }}"
           for COMMIT in $COMMITS; do
             git cherry-pick $COMMIT || {
               echo "Failed to cherry-pick commit $COMMIT"
@@ -109,7 +111,7 @@ jobs:
           gh issue create \
             --assignee "${{ github.event.pull_request.user.login }}" \
             --title "Failed to backport ${{ steps.extract-branch.outputs.pr_branch }} to develop" \
-            --body "Backport failed for PR #${{ github.event.pull_request.number }}. Manual backport may be required./n/n
+            --body "Backport to develop failed for PR #${{ github.event.pull_request.number }}. Manual backport may be required.
               Potential reasons:
               - Cherry-pick conflicts
               - Commits cannot be applied cleanly to develop branch
