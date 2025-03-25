@@ -59,11 +59,15 @@ jobs:
           echo "status=fail" >> $GITHUB_OUTPUT
           PR_BRANCH_NAME="${{ steps.extract-branch.outputs.pr_branch }}"
           BACKPORT_BRANCH="backport/$PR_BRANCH_NAME"
-          git checkout -b ${BACKPORT_BRANCH} ${{ github.event.pull_request.commits[0].sha }}
+
+          echo  ${{ github.event.pull_request.commits.last.sha }}
+          
+          git checkout -b ${BACKPORT_BRANCH} ${{ github.event.pull_request.commits.last.sha }}
           # COMMITS=$(git log --no-merges --pretty=format:"%H" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
-          # for commit in $PR_COMMITS; do
-          #    git cherry-pick $commit
-          # done
+          COMMITS=${{ github.event.pull_request.commits }}
+          for commit in $COMMITS; do
+            echo "Cherry-picking commit: $commit"
+          done
 
           git push origin ${BACKPORT_BRANCH}
           echo "Created backport branch: ${BACKPORT_BRANCH}"
