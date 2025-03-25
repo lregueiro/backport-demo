@@ -72,7 +72,7 @@ jobs:
         run: |
           echo "status=fail" >> $GITHUB_OUTPUT
           PR_BRANCH="${{ steps.extract-branch.outputs.pr_branch }}"
-          BACKPORT_BRANCH="backport/${PR_BRANCH}-to-develop"
+          BACKPORT_BRANCH="backport/${PR_BRANCH}"
           
           # Checkout develop branch
           git checkout origin/develop
@@ -84,7 +84,7 @@ jobs:
           # Cherry-pick commits from the original PR
           COMMITS="${{ steps.extract-branch.outputs.commits_to_backport }}"
           for COMMIT in $COMMITS; do
-            git cherry-pick $COMMIT || {
+            git cherry-pick --strategy=recursive -X theirs $COMMIT || {
               echo "Failed to cherry-pick commit $COMMIT"
               exit 1
             }
